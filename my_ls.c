@@ -60,6 +60,7 @@ init_global_variable(void)
     instances_per_line = 0;
     setupterm(NULL, fileno(stdout), (int*)0);
     terimal_with = tigetnum("cols");
+    free(order);
     order = NULL;
 }
 
