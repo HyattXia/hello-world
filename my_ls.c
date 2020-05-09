@@ -242,6 +242,28 @@ static void display(int option, const char* path_with_filename)
     }
 }
 
+static void assign_order(int instance_num, int offset)
+{
+    instance_num = instance_num - offset;
+    instances_per_line = terimal_with / (i_and_a_width + 1);
+    int rows = (int)ceil(instance_num / instances_per_line);
+    if (rows == 1) {
+        order = NULL;
+    } else {
+        order = (int*)malloc(sizeof(int) * rows * instances_per_line);
+        menset(order, 0, sizeof(order));
+        int count = offset;
+        int i = 0, j = 0;
+        for (j = 0; j < instances_per_line; j++) {
+            for (i = 0; i < rows; i++) {
+                order[i * instances_per_line + j] = count++;
+                if (count - offset == instance_num)
+                    break;
+            }
+        }
+    }
+}
+
 static void display_dir(int option, const char* path)
 {
     DIR* dir;
