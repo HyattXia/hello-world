@@ -1,8 +1,8 @@
-#include <math.h>
 #include <curses.h>
 #include <dirent.h>
 #include <grp.h>
 #include <linux/limits.h>
+#include <math.h>
 #include <pwd.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,8 +19,10 @@
 #define OPTION_L 2
 
 #define MAX_DISPLAY_FILE_NUM 256
+#define MAX_FANDD_PA_NUM 10
 
 #define BL_GREEN "\e[102m"
+#define L_GREEN "\e[92m"
 #define RSET_COLOR "\e[0m"
 
 struct Adate {
@@ -29,21 +31,22 @@ struct Adate {
     int item3;
 };
 
-static int filename_width = 0;
-static int link_width = 0;
-static int owner_name_width = 0;
-static int group_name_width = 0;
-static int size_width = 0;
-static bool contain_tyear_file = false;
-static struct Adate adate_width = { 3, 1, 0 };
-static int defp_dsp_num = 0;
+static int filename_width = 0;                  /* 文件名输出宽度 */
+static int link_width = 0;                      /* l连接数的最大位数*/
+static int owner_name_width = 0;                /* 当前展示文件拥有者名字的最大宽度 */
+static int group_name_width = 0;                /* 当前展示用户组名的最大宽度 */
+static int size_width = 0;                      /* 文件大小的最大宽度 */
+static bool contain_tyear_file = false;         /* 是否包含上次修改时间是今年的文件 */
+static struct Adate adate_width = { 3, 1, 0 };  /* 展示上次修改时间三个时间段的宽度*/
+static int defp_dsp_num = 0;                    /* */
 static int dispnum = 0;
 static int instances_per_line = 0;
-static int terimal_with = 0;
-static int i_and_a_width = 0;
-static int *order = NULL;
+static int terimal_with = 0;                    /* 当前终端的宽度*/
+static int i_and_a_width = 0;                   /* 单纯 -i选项和-a项展示问的宽度*/
+static int* order = NULL;                       /* 存放当文件多余一行的非-l */
 
-static void
+/*  初始化全区变量*/
+static void 
 init_global_variable(void)
 {
     filename_width = 0;
@@ -88,6 +91,7 @@ static int once_quick_sort(char* data[], int low, int high)
     return low;
 }
 
+/*  对字符串进行快速排序*/
 static void quick_sort(char* data[], int left, int right)
 {
     if (left < right) {
@@ -97,6 +101,7 @@ static void quick_sort(char* data[], int left, int right)
     }
 }
 
+/* 默认无任何选项展示*/
 static void display_default(struct stat* buf, char* filename)
 {
     if (S_ISDIR(buf->st_mode))
@@ -105,6 +110,7 @@ static void display_default(struct stat* buf, char* filename)
         printf("%*s ", i_and_a_width, filename);
 }
 
+/*  -l 选项展示*/
 static void display_l(struct stat* buf, char* filename)
 {
     if (S_ISLNK(buf->st_mode))
@@ -198,6 +204,7 @@ static void display_l(struct stat* buf, char* filename)
     printf(" %*s", adate_width.item3, tmp);
 }
 
+/*  展示单个文件*/
 static void display(int option, const char* path_with_filename)
 {
     char filename[NAME_MAX + 1];
@@ -242,16 +249,17 @@ static void display(int option, const char* path_with_filename)
     }
 }
 
+/*  若展示的文件或者文件夹超过终端的一行，分配好打印顺序，使其可以按照以列为打印*/
 static void assign_order(int instance_num, int offset)
 {
     instance_num = instance_num - offset;
     instances_per_line = terimal_with / (i_and_a_width + 1);
-    int rows = (int)ceil(instance_num / instances_per_line);
+    int rows = (int)(instance_num / instances_per_line);
     if (rows == 1) {
         order = NULL;
     } else {
         order = (int*)malloc(sizeof(int) * rows * instances_per_line);
-        menset(order, 0, sizeof(order));
+        memset(order, 0, sizeof(order));
         int count = offset;
         int i = 0, j = 0;
         for (j = 0; j < instances_per_line; j++) {
@@ -264,6 +272,7 @@ static void assign_order(int instance_num, int offset)
     }
 }
 
+/*  展示文件夹*/
 static void display_dir(int option, const char* path)
 {
     DIR* dir;
@@ -336,6 +345,12 @@ static void display_dir(int option, const char* path)
         if (st_abd_time->tm_year + 1900 >= 10000)
             adate_width.item3 = 5;
     }
+
+    if ((option & OPTION_A) == OPTION_A)
+        assign_order(rentry_in_dir, 0);
+    else
+        assign_order(rentry_in_dir, 2);
+
     quick_sort(path_with_filename, 0, rentry_in_dir - 1);
 
     for (i = 0; i < rentry_in_dir; i++) {
@@ -354,12 +369,13 @@ int main(int argc, char* argv[])
     char raw_option[16];
     int option = OPTION_NONE;
     char path[PATH_MAX];
-    char afileadir[10][PATH_MAX];
+    char a_dir[MAX_FANDD_PA_NUM][PATH_MAX];
+    char a_file[MAX_FANDD_PA_NUM][PATH_MAX];
     int num_of_option = 0;
     init_global_variable();
 
     k = 0;
-    for (i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) { /* 提取选项*/
         if (argv[i][0] == '-') {
             for (j = 1; j < strlen(argv[i]); j++) {
                 raw_option[k++] = argv[i][j];
@@ -369,8 +385,7 @@ int main(int argc, char* argv[])
     }
     raw_option[k] = '\0';
 
-    // printf("%s\n", option);
-    for (i = 0; i < k; i++) {
+    for (i = 0; i < k; i++) { /* 设置选项*/
         if (raw_option[i] == 'a') {
             option |= OPTION_A;
             continue;
@@ -389,80 +404,71 @@ int main(int argc, char* argv[])
         display_dir(option, path);
         return 0;
     }
-    // printf("%d\n", option);
 
     i = 1;
-    j = 0;
     struct stat buf;
-    int file_num = 0;
+    int file_num = 0, dir_num = 0;
     do {
         if (argv[i][0] == '-') {
             i++;
             continue;
         } else {
-            printf("%s\n", argv[i]);
-            strcpy(afileadir[j], argv[i]);
-            afileadir[j][strlen(argv[i])] = '\0';
-            i++;
-            j++;
-
-            if ((lstat(afileadir[j], &buf) != -1) && !S_ISDIR(buf.st_mode)) {
-                file_num++;
-                if (strlen(afileadir[j]) > i_and_a_width)
-                    i_and_a_width = strlen(afileadir[j]);
+            //printf("%s\n", argv[i]);
+            if (lstat(argv[i], &buf) == -1) {
+                continue;
             }
+
+            if (S_ISDIR(buf.st_mode)) { /* 提取文件夹*/
+                strcpy(a_dir[dir_num], argv[i]);
+                a_dir[dir_num++][strlen(argv[i])] = '\0';
+            } else { /* 提取文件*/
+                strcpy(a_file[j], argv[i]);
+                a_file[file_num][strlen(argv[i])] = '\0';
+                if (strlen(a_file[file_num]) > i_and_a_width)
+                    i_and_a_width = strlen(a_file[j]);
+                file_num++;
+            }
+            i++;
         }
     } while (i < argc);
 
-    char* tmp_afileadir[j];
-    for (i = 0; i < j; i++) {
-        tmp_afileadir[i] = afileadir[i];
-    }
-    quick_sort(tmp_afileadir, 0, j - 1);
+    /* 将文件和文件夹变成指向字符串的指针后，用快速排序排序*/
+    char *tmp_a_file[file_num], *tmp_a_dir[dir_num];
+    for (i = 0; i < file_num; i++)
+        tmp_a_file[i] = a_file[i];
 
-    instances_per_line = terimal_with / (i_and_a_width + 1);
-    int rows = (int)ceil(file_num / instances_per_line);
-    if (rows == 1){
-        order = NULL;
-    }
-    else{
-        order = (int*)malloc(sizeof(int) * rows * instances_per_line);
-        menset(order, 0, sizeof(order));
-        int count = 0;
-        int i = 0, j = 0;
-        for (j = 0; j < instances_per_line; j++) {
-            for (i = 0; i < rows; i++) {
-                order[i * instances_per_line + j] = count++;
-                if (count == file_num)
-                    break;
-            }
-        }
-    }
+    for (i = 0; i < dir_num; i++)
+        tmp_a_dir[i] = a_dir[i];
 
-    for (i = 0; i < j; i++) {
-        if (lstat(tmp_afileadir[i], &buf) == -1) {
-            printf("ls: cannont access '%s': No such file or directory", tmp_afileadir[i]);
+    quick_sort(tmp_a_file, 0, file_num - 1);
+    quick_sort(tmp_a_dir, 0, dir_num - 1);
+    assign_order(file_num, 0);
+
+    for (i = 0; i < file_num; i++) { /* 展示单个文件*/
+        if (lstat(tmp_a_file[order[i]], &buf) == -1) {
+            printf("ls: cannont access '%s': No such file or directory", tmp_a_dir[i]);
             continue;
         }
-        if (!S_ISDIR(buf.st_mode)) {
-            display(option, tmp_afileadir[i]);
-        }
+        if ((i + 1) % instances_per_line == 0)
+            printf("\n");
+        display(option, tmp_a_file[order[i]]);
     }
 
-    for (i = 0; i < j; i++) {
-        if (lstat(tmp_afileadir[i], &buf) == -1) {
-            printf("ls: cannont access '%s': No such file or directory", tmp_afileadir[i]);
+    for (i = 0; i < dir_num; i++) { /* 逐个展示文件夹中的文件*/
+        init_global_variable();
+        printf("%s:\n", tmp_a_dir[i]);
+        if (lstat(tmp_a_dir[i], &buf) == -1) {
+            printf("ls: cannont access '%s': No such file or directory", tmp_a_dir[i]);
             continue;
         }
-        if (S_ISDIR(buf.st_mode)) {
-            if (tmp_afileadir[i][strlen(tmp_afileadir[i]) - 1] != '/') {
-                tmp_afileadir[i][strlen(tmp_afileadir[i])] = '/';
-                tmp_afileadir[i][strlen(tmp_afileadir[i]) + 1] = '\0';
-            } else {
-                tmp_afileadir[i][strlen(tmp_afileadir[i])] = '\0';
-            }
-            display_dir(option, tmp_afileadir[i]);
+        if (tmp_a_dir[i][strlen(tmp_a_dir[i]) - 1] != '/') {
+            tmp_a_dir[i][strlen(tmp_a_dir[i])] = '/';
+            tmp_a_dir[i][strlen(tmp_a_dir[i]) + 1] = '\0';
+        } else {
+            tmp_a_dir[i][strlen(tmp_a_dir[i])] = '\0';
         }
+        display_dir(option, tmp_a_dir[i]);
+        printf("\n");
     }
     return 0;
 }
