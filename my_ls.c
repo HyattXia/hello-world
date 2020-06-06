@@ -39,8 +39,8 @@ static int size_width = 0;                      /* 文件大小的最大宽度 *
 static bool contain_tyear_file = false;         /* 是否包含上次修改时间是今年的文件 */
 static struct Adate adate_width = { 3, 1, 0 };  /* 展示上次修改时间三个时间段的宽度*/
 static int defp_dsp_num = 0;                    /* */
-static int dispnum = 0;
-static int instances_per_line = 0;
+static int dispnum = 0;                         /* */
+static int instances_per_line = 0;              /* 每一行展示实例数目*/
 static int terimal_with = 0;                    /* 当前终端的宽度*/
 static int i_and_a_width = 0;                   /* 单纯 -i选项和-a项展示问的宽度*/
 static int* order = NULL;                       /* 存放当文件多余一行的非-l */
@@ -102,16 +102,16 @@ static void quick_sort(char* data[], int left, int right)
 }
 
 /* 默认无任何选项展示*/
-static void display_default(struct stat* buf, char* filename)
+static void display_default(struct stat* buf, const char* filename)
 {
     if (S_ISDIR(buf->st_mode))
-        printf("%s%*s%s ", BL_GREEN, i_and_a_width, filename, RSET_COLOR);
+        printf("%s%*s%s%*s ", BL_GREEN, (int)strlen(filename), filename, RSET_COLOR, i_and_a_width - (int)strlen(filename), " ");
     else
-        printf("%*s ", i_and_a_width, filename);
+        printf("%s%*s%s%*s ", L_GREEN, (int)strlen(filename), filename, RSET_COLOR, i_and_a_width - (int)strlen(filename), " ");
 }
 
 /*  -l 选项展示*/
-static void display_l(struct stat* buf, char* filename)
+static void display_l(struct stat* buf, const char* filename)
 {
     if (S_ISLNK(buf->st_mode))
         printf("l");
@@ -204,12 +204,34 @@ static void display_l(struct stat* buf, char* filename)
     printf(" %*s", adate_width.item3, tmp);
 }
 
-/*  展示单个文件*/
-static void display(int option, const char* path_with_filename)
+static void diplay_single_file(int option, const char* path_with_filename)
 {
-    char filename[NAME_MAX + 1];
-    int i = 0, j = 0;
+    struct stat buf;
+    if (lstat(path_with_filename, &buf) == -1) {
+        my_error("lstat", __LINE__);
+    }
 
+    switch (option) {
+    case OPTION_NONE:
+    case OPTION_A:
+        display_default(&buf, path_with_filename);
+        break;
+    case OPTION_L:
+    case OPTION_A + OPTION_L:
+        display_l(&buf, path_with_filename);
+        if (S_ISDIR(buf.st_mode))
+            printf(" %s%-1s%s\n", BL_GREEN, path_with_filename, RSET_COLOR);
+        else
+            printf(" %s%-1s%s\n", L_GREEN, path_with_filename, RSET_COLOR);
+        break;
+    }
+}
+
+/*  展示单个文件*/
+static void diplay_entity_in_dir(int option, const char* path_with_filename)
+{
+    char filename[PATH_MAX];
+    int i = 0, j = 0;
     for (i = 0; i < strlen(path_with_filename); i++) {
         if (path_with_filename[i] == '/') {
             j = 0;
@@ -226,25 +248,32 @@ static void display(int option, const char* path_with_filename)
 
     switch (option) {
     case OPTION_NONE:
-        if (filename[0] != '.') {
-            display_default(&buf, filename);
+        if (strcmp(filename, "..") != 0 && strcmp(filename, ".") != 0) {
+            if (filename[0] != '.') {
+                display_default(&buf, filename);
+            }
         }
         break;
     case OPTION_A:
         display_default(&buf, filename);
         break;
     case OPTION_L:
-        if (filename[0] != '.') {
-            display_l(&buf, filename);
-            if (S_ISDIR(buf.st_mode))
-                printf(" %s%-10s%s\n", BL_GREEN, filename, RSET_COLOR);
-            else
-                printf(" %-10s\n", filename);
+        if (strcmp(filename, "..") != 0 && strcmp(filename, ".") != 0) {
+            if (filename[0] != '.') {
+                display_l(&buf, filename);
+                if (S_ISDIR(buf.st_mode))
+                    printf(" %s%-1s%s\n", BL_GREEN, filename, RSET_COLOR);
+                else
+                    printf(" %s%-1s%s\n", L_GREEN, filename, RSET_COLOR);
+            }
         }
         break;
     case OPTION_A + OPTION_L:
         display_l(&buf, filename);
-        printf(" %-10s\n", filename);
+        if (S_ISDIR(buf.st_mode))
+            printf(" %s%-1s%s\n", BL_GREEN, filename, RSET_COLOR);
+        else
+            printf(" %s%-1s%s\n", L_GREEN, filename, RSET_COLOR);
         break;
     }
 }
@@ -354,7 +383,7 @@ static void display_dir(int option, const char* path)
     quick_sort(path_with_filename, 0, rentry_in_dir - 1);
 
     for (i = 0; i < rentry_in_dir; i++) {
-        display(option, path_with_filename[i]);
+        diplay_entity_in_dir(option, path_with_filename[i]);
     }
 
     if ((option & OPTION_L) == 0) {
@@ -415,6 +444,7 @@ int main(int argc, char* argv[])
         } else {
             //printf("%s\n", argv[i]);
             if (lstat(argv[i], &buf) == -1) {
+                i++;
                 continue;
             }
 
@@ -422,10 +452,10 @@ int main(int argc, char* argv[])
                 strcpy(a_dir[dir_num], argv[i]);
                 a_dir[dir_num++][strlen(argv[i])] = '\0';
             } else { /* 提取文件*/
-                strcpy(a_file[j], argv[i]);
+                strcpy(a_file[file_num], argv[i]);
                 a_file[file_num][strlen(argv[i])] = '\0';
                 if (strlen(a_file[file_num]) > i_and_a_width)
-                    i_and_a_width = strlen(a_file[j]);
+                    i_and_a_width = strlen(a_file[file_num]);
                 file_num++;
             }
             i++;
@@ -449,10 +479,15 @@ int main(int argc, char* argv[])
             printf("ls: cannont access '%s': No such file or directory", tmp_a_dir[i]);
             continue;
         }
-        if ((i + 1) % instances_per_line == 0)
-            printf("\n");
-        display(option, tmp_a_file[order[i]]);
+        if (order == NULL) {
+            if ((i + 1) % instances_per_line == 0)
+                printf("\n");
+            diplay_single_file(option, tmp_a_file[order[i]]);
+        } else {
+            diplay_single_file(option, tmp_a_file[i]);
+        }
     }
+    printf("\n");
 
     for (i = 0; i < dir_num; i++) { /* 逐个展示文件夹中的文件*/
         init_global_variable();
