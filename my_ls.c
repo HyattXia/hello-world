@@ -38,12 +38,9 @@ static int group_name_width = 0;                /* 当前展示用户组名的�
 static int size_width = 0;                      /* 文件大小的最大宽度 */
 static bool contain_tyear_file = false;         /* 是否包含上次修改时间是今年的文件 */
 static struct Adate adate_width = { 3, 1, 0 };  /* 展示上次修改时间三个时间段的宽度*/
-static int defp_dsp_num = 0;                    /* */
-static int dispnum = 0;                         /* */
-static int instances_per_line = 0;              /* 每一行展示实例数目*/
 static int terimal_with = 0;                    /* 当前终端的宽度*/
 static int i_and_a_width = 0;                   /* 单纯 -i选项和-a项展示问的宽度*/
-static int* order = NULL;                       /* 存放当文件多余一行的非-l */
+static int pos = 0;                             /* 当前打印的位置*/
 
 /*  初始化全区变量*/
 static void 
@@ -58,13 +55,9 @@ init_global_variable(void)
     adate_width.month = 3;
     adate_width.month_day = 1;
     adate_width.item3 = 0;
-    defp_dsp_num = 0;
-    dispnum = 0;
-    instances_per_line = 0;
     setupterm(NULL, fileno(stdout), (int*)0);
     terimal_with = tigetnum("cols");
-    free(order);
-    order = NULL;
+    pos = 0;
 }
 
 static void my_error(const char* err_str, int line)
@@ -105,9 +98,9 @@ static void quick_sort(char* data[], int left, int right)
 static void display_default(struct stat* buf, const char* filename)
 {
     if (S_ISDIR(buf->st_mode))
-        printf("%s%*s%s%*s ", BL_GREEN, (int)strlen(filename), filename, RSET_COLOR, i_and_a_width - (int)strlen(filename), " ");
+        printf("%s%s%s ", BL_GREEN, filename, RSET_COLOR);
     else
-        printf("%s%*s%s%*s ", L_GREEN, (int)strlen(filename), filename, RSET_COLOR, i_and_a_width - (int)strlen(filename), " ");
+        printf("%s%s%s ", L_GREEN, filename, RSET_COLOR);
 }
 
 /*  -l 选项展示*/
@@ -204,6 +197,17 @@ static void display_l(struct stat* buf, const char* filename)
     printf(" %*s", adate_width.item3, tmp);
 }
 
+/* 若打印位置到达终端有边界，输出换行*/
+static void print_newline(const char* filename)
+{
+    pos += strlen(filename) + 1;
+    if (pos > terimal_with) {
+        printf("\n");
+        pos = 0;
+        pos += strlen(filename) + 1;
+    }
+}
+
 static void diplay_single_file(int option, const char* path_with_filename)
 {
     struct stat buf;
@@ -214,6 +218,7 @@ static void diplay_single_file(int option, const char* path_with_filename)
     switch (option) {
     case OPTION_NONE:
     case OPTION_A:
+        print_newline(path_with_filename);
         display_default(&buf, path_with_filename);
         break;
     case OPTION_L:
@@ -240,7 +245,6 @@ static void diplay_entity_in_dir(int option, const char* path_with_filename)
         filename[j++] = path_with_filename[i];
     }
     filename[j] = '\0';
-
     struct stat buf;
     if (lstat(path_with_filename, &buf) == -1) {
         my_error("lstat", __LINE__);
@@ -250,11 +254,13 @@ static void diplay_entity_in_dir(int option, const char* path_with_filename)
     case OPTION_NONE:
         if (strcmp(filename, "..") != 0 && strcmp(filename, ".") != 0) {
             if (filename[0] != '.') {
+                print_newline(filename);
                 display_default(&buf, filename);
             }
         }
         break;
     case OPTION_A:
+        print_newline(filename);
         display_default(&buf, filename);
         break;
     case OPTION_L:
@@ -275,29 +281,6 @@ static void diplay_entity_in_dir(int option, const char* path_with_filename)
         else
             printf(" %s%-1s%s\n", L_GREEN, filename, RSET_COLOR);
         break;
-    }
-}
-
-/*  若展示的文件或者文件夹超过终端的一行，分配好打印顺序，使其可以按照以列为打印*/
-static void assign_order(int instance_num, int offset)
-{
-    instance_num = instance_num - offset;
-    instances_per_line = terimal_with / (i_and_a_width + 1);
-    int rows = (int)(instance_num / instances_per_line);
-    if (rows == 1) {
-        order = NULL;
-    } else {
-        order = (int*)malloc(sizeof(int) * rows * instances_per_line);
-        memset(order, 0, sizeof(order));
-        int count = offset;
-        int i = 0, j = 0;
-        for (j = 0; j < instances_per_line; j++) {
-            for (i = 0; i < rows; i++) {
-                order[i * instances_per_line + j] = count++;
-                if (count - offset == instance_num)
-                    break;
-            }
-        }
     }
 }
 
@@ -375,11 +358,6 @@ static void display_dir(int option, const char* path)
             adate_width.item3 = 5;
     }
 
-    if ((option & OPTION_A) == OPTION_A)
-        assign_order(rentry_in_dir, 0);
-    else
-        assign_order(rentry_in_dir, 2);
-
     quick_sort(path_with_filename, 0, rentry_in_dir - 1);
 
     for (i = 0; i < rentry_in_dir; i++) {
@@ -444,6 +422,7 @@ int main(int argc, char* argv[])
         } else {
             //printf("%s\n", argv[i]);
             if (lstat(argv[i], &buf) == -1) {
+                printf("ls: cannont access '%s': No such file or directory\n", argv[i]);
                 i++;
                 continue;
             }
@@ -472,30 +451,17 @@ int main(int argc, char* argv[])
 
     quick_sort(tmp_a_file, 0, file_num - 1);
     quick_sort(tmp_a_dir, 0, dir_num - 1);
-    assign_order(file_num, 0);
 
     for (i = 0; i < file_num; i++) { /* 展示单个文件*/
-        if (lstat(tmp_a_file[order[i]], &buf) == -1) {
-            printf("ls: cannont access '%s': No such file or directory", tmp_a_dir[i]);
-            continue;
-        }
-        if (order == NULL) {
-            if ((i + 1) % instances_per_line == 0)
-                printf("\n");
-            diplay_single_file(option, tmp_a_file[order[i]]);
-        } else {
-            diplay_single_file(option, tmp_a_file[i]);
-        }
+        diplay_single_file(option, tmp_a_file[i]);
     }
-    printf("\n");
 
+    if (dir_num > 0) {
+        printf("\n");
+    }
     for (i = 0; i < dir_num; i++) { /* 逐个展示文件夹中的文件*/
         init_global_variable();
         printf("%s:\n", tmp_a_dir[i]);
-        if (lstat(tmp_a_dir[i], &buf) == -1) {
-            printf("ls: cannont access '%s': No such file or directory", tmp_a_dir[i]);
-            continue;
-        }
         if (tmp_a_dir[i][strlen(tmp_a_dir[i]) - 1] != '/') {
             tmp_a_dir[i][strlen(tmp_a_dir[i])] = '/';
             tmp_a_dir[i][strlen(tmp_a_dir[i]) + 1] = '\0';
@@ -503,7 +469,9 @@ int main(int argc, char* argv[])
             tmp_a_dir[i][strlen(tmp_a_dir[i])] = '\0';
         }
         display_dir(option, tmp_a_dir[i]);
-        printf("\n");
+        if (dir_num > 1 && i < dir_num - 1) {
+            printf("\n");
+        }
     }
     return 0;
 }
