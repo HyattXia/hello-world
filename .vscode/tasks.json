@@ -10,7 +10,8 @@
                 "${file}",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",
-                "-lncurses"
+                "-lncurses",
+                "-lm"
             ],
             "options": {
                 "cwd": "/usr/bin"

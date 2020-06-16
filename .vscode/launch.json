@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/${fileBasenameNoExtension}",
-            "args": ["/mnt/d/myfiles/HomeWork/UnixProgramming/work/my_ls"],
+            "args": ["my_ls.c," "my_ls"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

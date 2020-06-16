@@ -21,7 +21,7 @@
 #define MAX_DISPLAY_FILE_NUM 256
 #define MAX_FANDD_PA_NUM 10
 
-#define BL_GREEN "\e[102m"
+#define BGREEN_AND_BLUE "\e[42m\e[34m"
 #define L_GREEN "\e[92m"
 #define RSET_COLOR "\e[0m"
 
@@ -98,7 +98,7 @@ static void quick_sort(char* data[], int left, int right)
 static void display_default(struct stat* buf, const char* filename)
 {
     if (S_ISDIR(buf->st_mode))
-        printf("%s%s%s ", BL_GREEN, filename, RSET_COLOR);
+        printf("%s%s%s ", BGREEN_AND_BLUE, filename, RSET_COLOR);
     else
         printf("%s%s%s ", L_GREEN, filename, RSET_COLOR);
 }
@@ -225,7 +225,7 @@ static void diplay_single_file(int option, const char* path_with_filename)
     case OPTION_A + OPTION_L:
         display_l(&buf, path_with_filename);
         if (S_ISDIR(buf.st_mode))
-            printf(" %s%-1s%s\n", BL_GREEN, path_with_filename, RSET_COLOR);
+            printf(" %s%-1s%s\n", BGREEN_AND_BLUE, path_with_filename, RSET_COLOR);
         else
             printf(" %s%-1s%s\n", L_GREEN, path_with_filename, RSET_COLOR);
         break;
@@ -268,7 +268,7 @@ static void diplay_entity_in_dir(int option, const char* path_with_filename)
             if (filename[0] != '.') {
                 display_l(&buf, filename);
                 if (S_ISDIR(buf.st_mode))
-                    printf(" %s%-1s%s\n", BL_GREEN, filename, RSET_COLOR);
+                    printf(" %s%-1s%s\n", BGREEN_AND_BLUE, filename, RSET_COLOR);
                 else
                     printf(" %s%-1s%s\n", L_GREEN, filename, RSET_COLOR);
             }
@@ -277,7 +277,7 @@ static void diplay_entity_in_dir(int option, const char* path_with_filename)
     case OPTION_A + OPTION_L:
         display_l(&buf, filename);
         if (S_ISDIR(buf.st_mode))
-            printf(" %s%-1s%s\n", BL_GREEN, filename, RSET_COLOR);
+            printf(" %s%-1s%s\n", BGREEN_AND_BLUE, filename, RSET_COLOR);
         else
             printf(" %s%-1s%s\n", L_GREEN, filename, RSET_COLOR);
         break;
@@ -456,7 +456,7 @@ int main(int argc, char* argv[])
         diplay_single_file(option, tmp_a_file[i]);
     }
 
-    if (dir_num > 0) {
+    if (dir_num > 0 && file_num > 0) {
         printf("\n");
     }
     for (i = 0; i < dir_num; i++) { /* 逐个展示文件夹中的文件*/
