@@ -456,6 +456,9 @@ int main(int argc, char* argv[])
         diplay_single_file(option, tmp_a_file[i]);
     }
 
+    if (file_num > 0 && pos < terimal_with && (option & OPTION_L) == 0)
+        printf("\n");
+
     if (dir_num > 0 && file_num > 0) {
         printf("\n");
     }
